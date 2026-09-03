@@ -9,6 +9,7 @@ export interface Voucher {
   beneficiary?: string | null;
   pdf_storage_path?: string | null;
   pdf_filename?: string | null;
+  pdf_url?: string | null;
   is_used: boolean;
   used_at?: string | null;
   movie_title?: string | null;
@@ -26,16 +27,18 @@ export interface ParsedTicket {
   code: string;
   pin: string;
   expirationDate: string; // YYYY-MM-DD
+  rawExpirationDate?: string;
   circuit: string;
   sfCode?: string;
   beneficiary?: string;
   isValid: boolean;
   errorMessage?: string;
+  pdfBase64?: string;
 }
 
 export interface DashboardStats {
   availableCount: number;
-  expiringSoonCount: number; // <= 30 days
+  expiringSoonCount: number;
   usedCount: number;
   totalCount: number;
 }

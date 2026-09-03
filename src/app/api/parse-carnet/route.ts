@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
           beneficiary: extracted.beneficiary || "",
           isValid,
           errorMessage: isValid ? undefined : "Codice o PIN o Scadenza non estratti automaticamente.",
+          pdfBase64: item.buffer.toString("base64"),
         });
       } catch (err: any) {
         parsedTickets.push({
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
           circuit: "The Space Cinema",
           isValid: false,
           errorMessage: "Errore durante la lettura del file PDF: " + (err.message || "file corrotto"),
+          pdfBase64: item.buffer.toString("base64"),
         });
       }
     }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ParsedTicket } from "@/types";
 import { createClient } from "@/lib/supabase/client";
+import { storePdfBlob } from "@/lib/pdf-storage";
 import {
   UploadCloud,
   FileCheck2,
@@ -28,7 +29,6 @@ export default function ImportPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [extractedTickets, setExtractedTickets] = useState<ParsedTicket[]>([]);
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
   // Trigger file dialog
   const handleSelectFilesClick = () => {
@@ -52,7 +52,6 @@ export default function ImportPage() {
       return;
     }
 
-    setUploadedFiles(fileArray);
     setError(null);
     setParsing(true);
 
@@ -123,7 +122,7 @@ export default function ImportPage() {
     setExtractedTickets((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Save all confirmed tickets to DB & Storage
+  // Save all confirmed tickets to DB, IndexedDB & Supabase Storage
   const handleSaveAll = async () => {
     if (extractedTickets.length === 0) return;
 
@@ -137,25 +136,64 @@ export default function ImportPage() {
       } = await supabase.auth.getUser();
 
       const batchId = crypto.randomUUID();
+      const newVouchers = [];
 
-      const newVouchers = extractedTickets.map((t) => ({
-        id: crypto.randomUUID(),
-        user_id: user?.id || "demo-user",
-        code: t.code,
-        pin: t.pin,
-        expiration_date: t.expirationDate || "2026-12-07",
-        circuit: t.circuit || "The Space Cinema",
-        sf_code: t.sfCode || null,
-        beneficiary: t.beneficiary || null,
-        pdf_filename: t.filename,
-        is_used: false,
-        batch_id: batchId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
+      for (const t of extractedTickets) {
+        const voucherId = crypto.randomUUID();
+        let storagePath = null;
+
+        // Save PDF file binary into IndexedDB for instant local viewing
+        if (t.pdfBase64) {
+          try {
+            const byteCharacters = atob(t.pdfBase64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const pdfBlob = new Blob([byteArray], { type: "application/pdf" });
+
+            // Store by ID and by code
+            await storePdfBlob(voucherId, pdfBlob);
+            await storePdfBlob(t.code, pdfBlob);
+
+            // If Supabase user is logged in, upload to Supabase Storage
+            if (user?.id) {
+              const filePath = `${user.id}/${t.code}.pdf`;
+              const { data: uploadData } = await supabase.storage
+                .from("vouchers")
+                .upload(filePath, pdfBlob, { upsert: true });
+              if (uploadData) {
+                storagePath = filePath;
+              }
+            }
+          } catch (err) {
+            console.warn("Could not save PDF to storage:", err);
+          }
+        }
+
+        newVouchers.push({
+          id: voucherId,
+          user_id: user?.id || "demo-user",
+          code: t.code,
+          pin: t.pin,
+          expiration_date: t.expirationDate || "2026-12-07",
+          circuit: t.circuit || "The Space Cinema",
+          sf_code: t.sfCode || null,
+          beneficiary: t.beneficiary || null,
+          pdf_filename: t.filename,
+          pdf_storage_path: storagePath,
+          is_used: false,
+          batch_id: batchId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
 
       // Try inserting into Supabase
-      const { error: dbError } = await supabase.from("vouchers").insert(newVouchers);
+      try {
+        await supabase.from("vouchers").insert(newVouchers);
+      } catch {}
 
       // In local mode / demo fallback: sync with localStorage
       const localStored = localStorage.getItem("cinepass_vouchers");
@@ -164,12 +202,12 @@ export default function ImportPage() {
       localStorage.setItem("cinepass_vouchers", JSON.stringify(updatedList));
 
       setSuccessMessage(
-        `${newVouchers.length} biglietti sono stati salvati con successo nel Vault!`
+        `${newVouchers.length} biglietti e i rispettivi file PDF originali sono stati salvati con successo nel Vault!`
       );
 
       setTimeout(() => {
         router.push("/");
-      }, 1200);
+      }, 1000);
     } catch (err: any) {
       setError(err.message || "Errore durante il salvataggio dei voucher.");
     } finally {
@@ -276,7 +314,7 @@ export default function ImportPage() {
         </h3>
         <p className="text-xs text-tesla-steel mt-1 max-w-md mx-auto">
           Il parser rileverà automaticamente Codice Biglietto, PIN e Data di
-          Scadenza per ogni biglietto.
+          Scadenza per ogni biglietto e memorizzerà il PDF originale.
         </p>
 
         <div className="mt-4">
@@ -316,7 +354,6 @@ export default function ImportPage() {
               type="button"
               onClick={() => {
                 setExtractedTickets([]);
-                setUploadedFiles([]);
               }}
               className="text-xs text-tesla-steel hover:text-red-600 transition-colors"
             >

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, LogOut, LogIn, User } from "lucide-react";
+import { Plus, LogOut, LogIn } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
 
@@ -24,7 +24,6 @@ export default function Header() {
         setLoading(false);
       });
 
-      // Listen for auth state changes
       const {
         data: { subscription },
       } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -79,16 +78,19 @@ export default function Header() {
             >
               Dashboard
             </Link>
-            <Link
-              href="/import"
-              className={`py-5 transition-colors ${
-                pathname === "/import"
-                  ? "text-tesla-onyx border-b-2 border-tesla-onyx font-semibold"
-                  : "text-tesla-steel hover:text-tesla-onyx"
-              }`}
-            >
-              Importa PDF / ZIP
-            </Link>
+            {/* 'Importa PDF / ZIP' is only visible to logged-in users */}
+            {userEmail && (
+              <Link
+                href="/import"
+                className={`py-5 transition-colors ${
+                  pathname === "/import"
+                    ? "text-tesla-onyx border-b-2 border-tesla-onyx font-semibold"
+                    : "text-tesla-steel hover:text-tesla-onyx"
+                }`}
+              >
+                Importa PDF / ZIP
+              </Link>
+            )}
             <Link
               href="/history"
               className={`py-5 transition-colors ${
@@ -103,16 +105,19 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
-          <Link
-            href="/import"
-            className="btn-tesla-primary px-3.5 py-1.5 text-xs font-medium flex items-center gap-1.5 shadow-sm"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Nuovo Carnet</span>
-            <span className="sm:hidden">Carica</span>
-          </Link>
+          {/* 'Nuovo Carnet' button is strictly hidden when not logged in */}
+          {userEmail && (
+            <Link
+              href="/import"
+              className="btn-tesla-primary px-3.5 py-1.5 text-xs font-medium flex items-center gap-1.5 shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Nuovo Carnet</span>
+              <span className="sm:hidden">Carica</span>
+            </Link>
+          )}
 
-          <div className="h-5 w-px bg-tesla-border"></div>
+          {userEmail && <div className="h-5 w-px bg-tesla-border"></div>}
 
           {loading ? (
             <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse"></div>
@@ -137,7 +142,7 @@ export default function Header() {
           ) : (
             <Link
               href="/login"
-              className="btn-tesla-secondary px-3 py-1.5 text-xs font-medium flex items-center gap-1.5"
+              className="btn-tesla-primary px-4 py-1.5 text-xs font-semibold flex items-center gap-1.5 shadow-sm"
             >
               <LogIn className="w-3.5 h-3.5" />
               Accedi

@@ -6,7 +6,7 @@ import { Voucher } from "@/types";
 import { formatItalianDate } from "@/lib/pdf-parser";
 import { createClient } from "@/lib/supabase/client";
 import PdfViewerModal from "@/components/PdfViewerModal";
-import { Film, Calendar, FileText, ArrowLeft, Ticket } from "lucide-react";
+import { Film, Calendar, FileText, ArrowLeft } from "lucide-react";
 
 export default function HistoryPage() {
   const [usedVouchers, setUsedVouchers] = useState<Voucher[]>([]);
@@ -18,27 +18,31 @@ export default function HistoryPage() {
       setLoading(true);
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
-          .from("vouchers")
-          .select("*")
-          .eq("is_used", true)
-          .order("viewing_date", { ascending: false });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-        if (error || !data || data.length === 0) {
-          const localStored = localStorage.getItem("cinepass_vouchers");
-          if (localStored) {
-            const parsed: Voucher[] = JSON.parse(localStored);
-            setUsedVouchers(parsed.filter((v) => v.is_used));
+        if (user) {
+          const { data, error } = await supabase
+            .from("vouchers")
+            .select("*")
+            .eq("is_used", true)
+            .order("viewing_date", { ascending: false });
+
+          if (!error && data) {
+            setUsedVouchers(data as Voucher[]);
+            setLoading(false);
+            return;
           }
-        } else {
-          setUsedVouchers(data as Voucher[]);
         }
-      } catch {
-        const localStored = localStorage.getItem("cinepass_vouchers");
-        if (localStored) {
-          const parsed: Voucher[] = JSON.parse(localStored);
-          setUsedVouchers(parsed.filter((v) => v.is_used));
-        }
+
+        // Public fallback for used vouchers
+        const res = await fetch("/api/vouchers/public");
+        const json = await res.json();
+        setUsedVouchers(json.vouchers || []);
+      } catch (err) {
+        console.error("Errore caricamento storico:", err);
+        setUsedVouchers([]);
       } finally {
         setLoading(false);
       }
@@ -75,14 +79,14 @@ export default function HistoryPage() {
 
       {loading ? (
         <div className="py-20 text-center text-xs text-tesla-steel">
-          Caricamento storico in corso...
+          Caricamento storico film da Supabase...
         </div>
       ) : usedVouchers.length === 0 ? (
         <div className="card-tesla-container p-12 bg-white text-center">
           <Film className="w-10 h-10 text-tesla-gray mx-auto mb-3" />
           <h3 className="text-sm font-bold text-tesla-onyx">Nessun film ancora registrato</h3>
           <p className="text-xs text-tesla-steel mt-1 max-w-sm mx-auto">
-            Quando utilizzi un voucher dalla dashboard, inserisci il film visto e verrà archiviato qui con il relativo PDF.
+            Quando un voucher viene contrassegnato come usato con il titolo del film visto, viene archiviato in questo catalogo.
           </p>
           <Link
             href="/"

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Voucher } from "@/types";
-import { getPdfBlob } from "@/lib/pdf-storage";
 import { createClient } from "@/lib/supabase/client";
 import { X, Download, ExternalLink, Loader2, FileText, AlertCircle } from "lucide-react";
 
@@ -18,8 +17,6 @@ export default function PdfViewerModal({ voucher, isOpen, onClose }: PdfViewerMo
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let activeUrl: string | null = null;
-
     async function loadPdf() {
       if (!voucher || !isOpen) {
         setPdfUrl(null);
@@ -30,23 +27,10 @@ export default function PdfViewerModal({ voucher, isOpen, onClose }: PdfViewerMo
       setError(null);
 
       try {
-        // 1. Check IndexedDB for the local binary file
-        let blob = await getPdfBlob(voucher.id);
-        if (!blob && voucher.code) {
-          blob = await getPdfBlob(voucher.code);
-        }
-
-        if (blob) {
-          activeUrl = URL.createObjectURL(blob);
-          setPdfUrl(activeUrl);
-          setLoading(false);
-          return;
-        }
-
-        // 2. Check Supabase Storage if path exists
         if (voucher.pdf_storage_path) {
+          // 1. First try directly via client
           const supabase = createClient();
-          const { data, error: storageError } = await supabase.storage
+          const { data, error: storageErr } = await supabase.storage
             .from("vouchers")
             .createSignedUrl(voucher.pdf_storage_path, 3600);
 
@@ -55,35 +39,31 @@ export default function PdfViewerModal({ voucher, isOpen, onClose }: PdfViewerMo
             setLoading(false);
             return;
           }
-        }
 
-        // 3. Fallback for sample tickets or if local sample available
-        const sampleCheck = await fetch("/sample_voucher.pdf", { method: "HEAD" });
-        if (sampleCheck.ok) {
-          setPdfUrl("/sample_voucher.pdf");
-          setLoading(false);
-          return;
-        }
+          // 2. Fallback via server API (handles both authenticated and public used vouchers)
+          const res = await fetch(
+            `/api/vouchers/pdf?path=${encodeURIComponent(voucher.pdf_storage_path)}`
+          );
+          const json = await res.json();
+          if (json.url) {
+            setPdfUrl(json.url);
+            setLoading(false);
+            return;
+          }
 
-        // No PDF file found
-        setError(
-          "File PDF originale non trovato nella memoria locale o nello storage remoto."
-        );
+          throw new Error(json.error || "File non trovato su Supabase Storage.");
+        } else {
+          setError("Nessun file PDF originale è associato a questo voucher su Supabase.");
+        }
       } catch (err: any) {
-        console.error("Errore nel caricamento del file PDF:", err);
-        setError("Impossibile caricare il documento PDF: " + (err.message || ""));
+        console.error("Errore recupero PDF:", err);
+        setError(err.message || "Impossibile recuperare il file PDF da Supabase Storage.");
       } finally {
         setLoading(false);
       }
     }
 
     loadPdf();
-
-    return () => {
-      if (activeUrl && activeUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(activeUrl);
-      }
-    };
   }, [voucher, isOpen]);
 
   if (!isOpen || !voucher) return null;
@@ -149,16 +129,13 @@ export default function PdfViewerModal({ voucher, isOpen, onClose }: PdfViewerMo
           {loading ? (
             <div className="flex flex-col items-center gap-2 text-white text-xs">
               <Loader2 className="w-6 h-6 animate-spin text-white" />
-              <span>Caricamento del file PDF originale in corso...</span>
+              <span>Caricamento del file PDF originale da Supabase Storage...</span>
             </div>
           ) : error ? (
             <div className="bg-white p-6 rounded-lg max-w-md text-center m-4 shadow-lg border border-red-200">
               <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-              <h4 className="text-sm font-bold text-tesla-onyx mb-1">Documento non visualizzabile</h4>
-              <p className="text-xs text-tesla-steel mb-4">{error}</p>
-              <p className="text-[11px] text-tesla-gray">
-                Caricando il carnet dalla pagina <strong>Importa PDF / ZIP</strong> il file originale verrà archiviato e reso consultabile all&apos;istante.
-              </p>
+              <h4 className="text-sm font-bold text-tesla-onyx mb-1">Documento non disponibile</h4>
+              <p className="text-xs text-tesla-steel">{error}</p>
             </div>
           ) : pdfUrl ? (
             <iframe
@@ -172,7 +149,7 @@ export default function PdfViewerModal({ voucher, isOpen, onClose }: PdfViewerMo
         {/* Modal Bottom Footer */}
         <div className="flex items-center justify-between pt-3 border-t border-[#eeeeee] mt-3">
           <span className="text-[11px] text-tesla-steel">
-            Documento originale di <strong>The Space Cinema</strong>
+            Documento archiviato su <strong>Supabase Storage</strong>
           </span>
           <button
             type="button"

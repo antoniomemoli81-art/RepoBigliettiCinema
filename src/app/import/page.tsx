@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ParsedTicket } from "@/types";
 import { createClient } from "@/lib/supabase/client";
-import { storePdfBlob } from "@/lib/pdf-storage";
 import {
   UploadCloud,
   FileCheck2,
@@ -14,13 +13,16 @@ import {
   CheckCircle2,
   Trash2,
   AlertCircle,
-  FileUp,
   Loader2,
+  Lock,
 } from "lucide-react";
 
 export default function ImportPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   const [isDragging, setIsDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -30,6 +32,28 @@ export default function ImportPage() {
 
   const [extractedTickets, setExtractedTickets] = useState<ParsedTicket[]>([]);
 
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+
+        if (authUser) {
+          setUser({ id: authUser.id, email: authUser.email });
+        } else {
+          setUser(null);
+        }
+      } catch (e) {
+        setUser(null);
+      } finally {
+        setCheckingAuth(false);
+      }
+    }
+    checkAuth();
+  }, []);
+
   // Trigger file dialog
   const handleSelectFilesClick = () => {
     if (fileInputRef.current) {
@@ -37,7 +61,7 @@ export default function ImportPage() {
     }
   };
 
-  // Handle files (both from input and drag & drop)
+  // Process files
   const processFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files).filter(
       (f) =>
@@ -78,7 +102,6 @@ export default function ImportPage() {
     }
   };
 
-  // Drag and drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -97,7 +120,6 @@ export default function ImportPage() {
     }
   };
 
-  // Edit ticket field inline
   const updateTicketField = (
     id: string,
     field: "code" | "pin" | "expirationDate",
@@ -117,13 +139,17 @@ export default function ImportPage() {
     );
   };
 
-  // Remove ticket from list
   const removeTicket = (id: string) => {
     setExtractedTickets((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Save all confirmed tickets to DB, IndexedDB & Supabase Storage
+  // Save all confirmed tickets to Supabase DB & Supabase Storage ONLY
   const handleSaveAll = async () => {
+    if (!user) {
+      setError("Devi effettuare l'accesso per salvare i biglietti su Supabase.");
+      return;
+    }
+
     if (extractedTickets.length === 0) return;
 
     setSaving(true);
@@ -131,10 +157,6 @@ export default function ImportPage() {
 
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
       const batchId = crypto.randomUUID();
       const newVouchers = [];
 
@@ -142,7 +164,7 @@ export default function ImportPage() {
         const voucherId = crypto.randomUUID();
         let storagePath = null;
 
-        // Save PDF file binary into IndexedDB for instant local viewing
+        // Upload PDF directly to Supabase Storage
         if (t.pdfBase64) {
           try {
             const byteCharacters = atob(t.pdfBase64);
@@ -153,28 +175,24 @@ export default function ImportPage() {
             const byteArray = new Uint8Array(byteNumbers);
             const pdfBlob = new Blob([byteArray], { type: "application/pdf" });
 
-            // Store by ID and by code
-            await storePdfBlob(voucherId, pdfBlob);
-            await storePdfBlob(t.code, pdfBlob);
+            const filePath = `${user.id}/${t.code}.pdf`;
+            const { data: uploadData, error: uploadErr } = await supabase.storage
+              .from("vouchers")
+              .upload(filePath, pdfBlob, { upsert: true });
 
-            // If Supabase user is logged in, upload to Supabase Storage
-            if (user?.id) {
-              const filePath = `${user.id}/${t.code}.pdf`;
-              const { data: uploadData } = await supabase.storage
-                .from("vouchers")
-                .upload(filePath, pdfBlob, { upsert: true });
-              if (uploadData) {
-                storagePath = filePath;
-              }
+            if (uploadErr) {
+              console.warn("Upload storage error:", uploadErr);
+            } else if (uploadData) {
+              storagePath = filePath;
             }
-          } catch (err) {
-            console.warn("Could not save PDF to storage:", err);
+          } catch (storageException) {
+            console.warn("Exception during Supabase storage upload:", storageException);
           }
         }
 
         newVouchers.push({
           id: voucherId,
-          user_id: user?.id || "demo-user",
+          user_id: user.id,
           code: t.code,
           pin: t.pin,
           expiration_date: t.expirationDate || "2026-12-07",
@@ -190,30 +208,60 @@ export default function ImportPage() {
         });
       }
 
-      // Try inserting into Supabase
-      try {
-        await supabase.from("vouchers").insert(newVouchers);
-      } catch {}
-
-      // In local mode / demo fallback: sync with localStorage
-      const localStored = localStorage.getItem("cinepass_vouchers");
-      const currentList = localStored ? JSON.parse(localStored) : [];
-      const updatedList = [...newVouchers, ...currentList];
-      localStorage.setItem("cinepass_vouchers", JSON.stringify(updatedList));
+      // Insert directly into Supabase PostgreSQL vouchers table
+      const { error: dbError } = await supabase.from("vouchers").insert(newVouchers);
+      if (dbError) throw dbError;
 
       setSuccessMessage(
-        `${newVouchers.length} biglietti e i rispettivi file PDF originali sono stati salvati con successo nel Vault!`
+        `${newVouchers.length} biglietti sono stati salvati con successo su Supabase!`
       );
 
       setTimeout(() => {
         router.push("/");
       }, 1000);
     } catch (err: any) {
-      setError(err.message || "Errore durante il salvataggio dei voucher.");
+      setError(err.message || "Errore durante il salvataggio dei voucher su Supabase.");
     } finally {
       setSaving(false);
     }
   };
+
+  if (checkingAuth) {
+    return (
+      <main className="max-w-7xl mx-auto px-6 py-20 text-center text-xs text-tesla-steel">
+        Verifica autenticazione in corso...
+      </main>
+    );
+  }
+
+  // If user is not logged in: block access with Tesla design card
+  if (!user) {
+    return (
+      <main className="max-w-md mx-auto px-6 py-16 w-full flex-1 text-center">
+        <div className="card-tesla-container p-8 bg-white shadow-sm">
+          <div className="w-12 h-12 mx-auto rounded-lg bg-tesla-off-white flex items-center justify-center text-tesla-onyx mb-4">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-tesla-onyx">Accesso Riservato</h2>
+          <p className="text-xs text-tesla-steel mt-1.5 mb-6">
+            Per caricare e importare nuovi carnet di voucher nel tuo Vault Supabase, devi prima effettuare l&apos;accesso.
+          </p>
+          <Link
+            href="/login"
+            className="btn-tesla-primary w-full py-2.5 text-xs font-semibold block shadow-sm"
+          >
+            Accedi o Registrati
+          </Link>
+          <Link
+            href="/"
+            className="text-xs text-tesla-steel hover:text-tesla-onyx mt-4 inline-block font-medium"
+          >
+            &larr; Torna all&apos;Archivio Pubblico
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 w-full flex-1">
@@ -232,8 +280,7 @@ export default function ImportPage() {
             Importazione Biglietti e Carnet
           </h1>
           <p className="text-xs text-tesla-steel mt-0.5">
-            Carica più PDF contemporaneamente o un file ZIP contenente i voucher
-            The Space Cinema
+            Carica più PDF contemporaneamente o un file ZIP contenente i voucher The Space Cinema
           </p>
         </div>
 
@@ -245,20 +292,18 @@ export default function ImportPage() {
           >
             {saving ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Salvataggio in
-                corso...
+                <Loader2 className="w-4 h-4 animate-spin" /> Salvataggio su Supabase...
               </>
             ) : (
               <>
-                <CheckCircle2 className="w-4 h-4" /> Salva tutti i{" "}
-                {extractedTickets.length} Voucher
+                <CheckCircle2 className="w-4 h-4" /> Salva {extractedTickets.length} Voucher su Supabase
               </>
             )}
           </button>
         )}
       </div>
 
-      {/* Notifications */}
+      {/* Alerts */}
       {error && (
         <div className="mb-6 p-4 rounded bg-red-50 text-red-700 border border-red-200 text-xs flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
@@ -273,7 +318,6 @@ export default function ImportPage() {
         </div>
       )}
 
-      {/* Hidden File Input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -313,8 +357,7 @@ export default function ImportPage() {
             : "Trascina qui i tuoi PDF singoli o il file ZIP del carnet"}
         </h3>
         <p className="text-xs text-tesla-steel mt-1 max-w-md mx-auto">
-          Il parser rileverà automaticamente Codice Biglietto, PIN e Data di
-          Scadenza per ogni biglietto e memorizzerà il PDF originale.
+          Il sistema estrarrà automaticamente Codice, PIN e Scadenza e caricherà i PDF su Supabase Storage.
         </p>
 
         <div className="mt-4">
@@ -322,7 +365,7 @@ export default function ImportPage() {
             type="button"
             className="btn-tesla-primary px-4 py-2 text-xs font-semibold shadow-sm"
           >
-            Seleziona file dal dispositivo
+            Seleziona file dal computer
           </button>
         </div>
 
@@ -345,16 +388,13 @@ export default function ImportPage() {
                 </span>
               </div>
               <p className="text-xs text-tesla-steel mt-0.5">
-                Puoi modificare i campi inline in caso di incongruenze prima del
-                salvataggio.
+                Puoi modificare i campi inline prima del salvataggio nel database Supabase.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() => {
-                setExtractedTickets([]);
-              }}
+              onClick={() => setExtractedTickets([])}
               className="text-xs text-tesla-steel hover:text-red-600 transition-colors"
             >
               Rimuovi tutti
@@ -453,13 +493,11 @@ export default function ImportPage() {
             >
               {saving ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Salvataggio in
-                  corso...
+                  <Loader2 className="w-4 h-4 animate-spin" /> Salvataggio su Supabase...
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="w-4 h-4" /> Conferma e Salva nel
-                  Vault
+                  <CheckCircle2 className="w-4 h-4" /> Conferma e Salva su Supabase
                 </>
               )}
             </button>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, Film, ArrowUpRight, LogOut, Ticket } from "lucide-react";
+import { Plus, LogOut, LogIn, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
 
@@ -10,6 +10,7 @@ export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     try {
@@ -17,10 +18,24 @@ export default function Header() {
       supabase.auth.getUser().then(({ data }) => {
         if (data?.user?.email) {
           setUserEmail(data.user.email);
+        } else {
+          setUserEmail(null);
         }
+        setLoading(false);
       });
+
+      // Listen for auth state changes
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUserEmail(session?.user?.email ?? null);
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
     } catch {
-      // client error fallback
+      setLoading(false);
     }
   }, []);
 
@@ -28,6 +43,7 @@ export default function Header() {
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
+      setUserEmail(null);
       router.push("/login");
     } catch {
       router.push("/login");
@@ -98,23 +114,35 @@ export default function Header() {
 
           <div className="h-5 w-px bg-tesla-border"></div>
 
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-tesla-onyx text-white flex items-center justify-center text-xs font-semibold">
-              {userEmail ? userEmail.slice(0, 2).toUpperCase() : "AM"}
+          {loading ? (
+            <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse"></div>
+          ) : userEmail ? (
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-tesla-onyx text-white flex items-center justify-center text-xs font-semibold">
+                {userEmail.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="hidden sm:block text-left">
+                <span className="text-xs font-medium text-tesla-onyx block leading-tight truncate max-w-[140px]">
+                  {userEmail}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="text-[10px] text-tesla-gray hover:text-tesla-blue flex items-center gap-1"
+                >
+                  <LogOut className="w-2.5 h-2.5" />
+                  Disconnetti
+                </button>
+              </div>
             </div>
-            <div className="hidden sm:block text-left">
-              <span className="text-xs font-medium text-tesla-onyx block leading-tight truncate max-w-[140px]">
-                {userEmail || "Antonio Memoli"}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="text-[10px] text-tesla-gray hover:text-tesla-blue flex items-center gap-1"
-              >
-                <LogOut className="w-2.5 h-2.5" />
-                Disconnetti
-              </button>
-            </div>
-          </div>
+          ) : (
+            <Link
+              href="/login"
+              className="btn-tesla-secondary px-3 py-1.5 text-xs font-medium flex items-center gap-1.5"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              Accedi
+            </Link>
+          )}
         </div>
       </div>
     </header>

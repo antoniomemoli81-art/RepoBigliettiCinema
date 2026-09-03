@@ -14,23 +14,20 @@ import {
   Search,
   Plus,
   Ticket,
-  Clock,
-  CheckCircle2,
-  Film,
-  Copy,
-  Check,
-  FileText,
   AlertCircle,
+  Cloud,
+  CloudOff,
 } from "lucide-react";
 
-// Mock data di partenza se il database è vuoto
 const INITIAL_SAMPLE_VOUCHERS: Voucher[] = [
   {
     id: "sample-1",
     user_id: "demo-user",
     code: "MR010739872",
     pin: "9118",
-    expiration_date: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // in 12 days
+    expiration_date: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0],
     circuit: "The Space Cinema",
     beneficiary: "Antonio Memoli",
     sf_code: "CB4C577A9EE2CC0D",
@@ -92,34 +89,46 @@ export default function DashboardPage() {
   const [filter, setFilter] = useState<"all" | "available" | "expiring" | "used">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [isCloudSynced, setIsCloudSynced] = useState(false);
 
   // Modals state
   const [selectedVoucherForUse, setSelectedVoucherForUse] = useState<Voucher | null>(null);
   const [selectedVoucherForPdf, setSelectedVoucherForPdf] = useState<Voucher | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
-  // Load vouchers from Supabase or fallback
+  // Load vouchers from Supabase (if logged in) or fallback to local
   useEffect(() => {
     async function loadVouchers() {
       setLoading(true);
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
-          .from("vouchers")
-          .select("*")
-          .order("expiration_date", { ascending: true });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-        if (error || !data || data.length === 0) {
-          // Check localStorage or use sample initial vouchers
-          const localStored = localStorage.getItem("cinepass_vouchers");
-          if (localStored) {
-            setVouchers(JSON.parse(localStored));
-          } else {
-            setVouchers(INITIAL_SAMPLE_VOUCHERS);
-            localStorage.setItem("cinepass_vouchers", JSON.stringify(INITIAL_SAMPLE_VOUCHERS));
+        if (user) {
+          setIsCloudSynced(true);
+          const { data, error } = await supabase
+            .from("vouchers")
+            .select("*")
+            .order("expiration_date", { ascending: true });
+
+          if (!error && data && data.length > 0) {
+            setVouchers(data as Voucher[]);
+            setLoading(false);
+            return;
           }
         } else {
-          setVouchers(data as Voucher[]);
+          setIsCloudSynced(false);
+        }
+
+        // Check localStorage
+        const localStored = localStorage.getItem("cinepass_vouchers");
+        if (localStored) {
+          setVouchers(JSON.parse(localStored));
+        } else {
+          setVouchers(INITIAL_SAMPLE_VOUCHERS);
+          localStorage.setItem("cinepass_vouchers", JSON.stringify(INITIAL_SAMPLE_VOUCHERS));
         }
       } catch {
         const localStored = localStorage.getItem("cinepass_vouchers");
@@ -136,7 +145,6 @@ export default function DashboardPage() {
     loadVouchers();
   }, []);
 
-  // Save to local storage for persistence across reloads in demo mode
   const syncVouchers = (updatedList: Voucher[]) => {
     setVouchers(updatedList);
     try {
@@ -158,16 +166,14 @@ export default function DashboardPage() {
     };
   }, [vouchers]);
 
-  // Filter & search filtering
+  // Filter & search
   const filteredVouchers = useMemo(() => {
     return vouchers.filter((voucher) => {
-      // Filter tab
       if (filter === "available" && voucher.is_used) return false;
       if (filter === "expiring" && (voucher.is_used || !isExpiringSoon(voucher.expiration_date, 30)))
         return false;
       if (filter === "used" && !voucher.is_used) return false;
 
-      // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesCode = voucher.code.toLowerCase().includes(q);
@@ -180,7 +186,7 @@ export default function DashboardPage() {
     });
   }, [vouchers, filter, searchQuery]);
 
-  // Handler: Confirm ticket usage
+  // Confirm ticket usage
   const handleConfirmUse = async (voucherId: string, movieTitle: string, viewingDate: string) => {
     try {
       const supabase = createClient();
@@ -193,11 +199,8 @@ export default function DashboardPage() {
           viewing_date: viewingDate,
         })
         .eq("id", voucherId);
-    } catch {
-      // client error fallback
-    }
+    } catch {}
 
-    // Update in local state
     const updated = vouchers.map((v) =>
       v.id === voucherId
         ? {
@@ -220,9 +223,26 @@ export default function DashboardPage() {
 
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 w-full">
+      {/* Cloud Sync Status Banner (if not logged in) */}
+      {!isCloudSynced && (
+        <div className="mb-6 p-3.5 bg-blue-50/60 border border-blue-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-blue-900">
+            <Cloud className="w-4 h-4 text-tesla-blue shrink-0" />
+            <span>
+              <strong>Database Supabase collegato!</strong> Effettua l&apos;accesso per sincronizzare i tuoi voucher sul cloud Postgres e consultarli da qualunque dispositivo.
+            </span>
+          </div>
+          <Link
+            href="/login"
+            className="btn-tesla-primary px-3 py-1.5 text-xs font-semibold whitespace-nowrap self-start sm:self-auto"
+          >
+            Accedi / Registrati
+          </Link>
+        </div>
+      )}
+
       {/* Top Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
-        {/* Available Card */}
         <div className="card-tesla-container p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-tesla-steel">
@@ -244,7 +264,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Expiring Card */}
         <div className="card-tesla-container p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-tesla-steel">
@@ -268,7 +287,6 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Used Card */}
         <div className="card-tesla-container p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-tesla-steel">
@@ -291,7 +309,6 @@ export default function DashboardPage() {
 
       {/* Control Bar: Filters, Search, and View Switcher */}
       <div className="bg-white border border-tesla-border rounded-t-lg p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-        {/* Filter Pills */}
         <div className="flex items-center gap-1 bg-tesla-off-white p-1 rounded-md text-xs font-medium w-full sm:w-auto overflow-x-auto">
           <button
             onClick={() => setFilter("all")}
@@ -335,7 +352,6 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* Search & Layout Toggle */}
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="relative flex-1 sm:w-64">
             <Search className="w-4 h-4 text-tesla-gray absolute left-3 top-2.5" />
@@ -375,7 +391,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       {loading ? (
         <div className="py-20 text-center text-xs text-tesla-steel">
           Caricamento voucher in corso...
@@ -398,7 +414,6 @@ export default function DashboardPage() {
           </Link>
         </div>
       ) : viewMode === "grid" ? (
-        /* View 1: Card Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pt-5">
           {filteredVouchers.map((voucher) => (
             <TicketCard
@@ -410,7 +425,6 @@ export default function DashboardPage() {
           ))}
         </div>
       ) : (
-        /* View 2: Compact Table */
         <div className="bg-white border border-tesla-border rounded-b-lg overflow-hidden shadow-sm mt-0 border-t-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -506,7 +520,7 @@ export default function DashboardPage() {
                           className="btn-tesla-secondary px-2 py-1 text-xs"
                           title="Visualizza PDF originale"
                         >
-                          <FileText className="w-3.5 h-3.5 text-tesla-steel" />
+                          PDF
                         </button>
                       </td>
                     </tr>

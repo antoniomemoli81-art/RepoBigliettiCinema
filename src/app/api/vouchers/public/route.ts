@@ -20,7 +20,7 @@ export async function GET() {
     // Only fetch vouchers that are ALREADY USED (is_used = true)
     const { data, error } = await supabase
       .from("vouchers")
-      .select("id, code, pin, expiration_date, circuit, is_used, used_at, movie_title, viewing_date, pdf_filename, pdf_storage_path, created_at, updated_at")
+      .select("id, code, pin, expiration_date, circuit, is_used, used_at, movie_title, movie_poster_url, viewing_date, pdf_filename, pdf_storage_path, created_at, updated_at")
       .eq("is_used", true)
       .order("viewing_date", { ascending: false });
 

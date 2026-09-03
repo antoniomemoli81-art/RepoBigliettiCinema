@@ -37,7 +37,7 @@ export default function TicketCard({ voucher, onUse, onViewPdf }: TicketCardProp
     <div
       className={`card-tesla-container p-5 flex flex-col justify-between relative ${
         voucher.is_used
-          ? "border-l-4 border-l-slate-300 bg-[#fafafa]/80 opacity-90"
+          ? "border-l-4 border-l-slate-300 bg-[#fafafa]/90"
           : expired
           ? "border-l-4 border-l-red-500"
           : expiring
@@ -157,17 +157,33 @@ export default function TicketCard({ voucher, onUse, onViewPdf }: TicketCardProp
           </div>
         </div>
 
-        {/* Used Film details (if already used) */}
+        {/* Used Film details with Movie Poster Thumbnail */}
         {voucher.is_used && voucher.movie_title && (
-          <div className="bg-white border border-[#e9ecef] rounded p-2.5 mb-4 flex items-start gap-2">
-            <Film className="w-4 h-4 text-tesla-steel shrink-0 mt-0.5" />
-            <div className="min-w-0">
+          <div className="bg-white border border-[#e9ecef] rounded p-3 mb-4 flex items-center gap-3 shadow-sm">
+            {voucher.movie_poster_url ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={voucher.movie_poster_url}
+                alt={voucher.movie_title}
+                className="w-11 h-16 object-cover rounded border border-slate-200 shadow-sm shrink-0"
+              />
+            ) : (
+              <div className="w-11 h-16 rounded bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center text-slate-400">
+                <Film className="w-5 h-5" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
               <span className="text-[10px] text-tesla-steel uppercase tracking-wider block font-medium">
-                Film visto al cinema:
+                Film visto al cinema
               </span>
-              <span className="text-xs font-bold text-tesla-onyx truncate block">
+              <span className="text-xs font-bold text-tesla-onyx truncate block leading-snug">
                 {voucher.movie_title}
               </span>
+              {voucher.viewing_date && (
+                <span className="text-[11px] text-tesla-steel block mt-0.5">
+                  {formatItalianDate(voucher.viewing_date)}
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -186,7 +202,7 @@ export default function TicketCard({ voucher, onUse, onViewPdf }: TicketCardProp
           </button>
         ) : (
           <span className="text-xs text-tesla-steel font-medium flex-1">
-            Utilizzato per la visione
+            Biglietto Utilizzato
           </span>
         )}
 

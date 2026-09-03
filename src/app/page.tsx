@@ -130,7 +130,12 @@ export default function DashboardPage() {
   }, [vouchers, filter, searchQuery, isAuthenticated]);
 
   // Confirm ticket usage (authenticated only)
-  const handleConfirmUse = async (voucherId: string, movieTitle: string, viewingDate: string) => {
+  const handleConfirmUse = async (
+    voucherId: string,
+    movieTitle: string,
+    viewingDate: string,
+    moviePosterUrl?: string | null
+  ) => {
     try {
       const supabase = createClient();
       const { error } = await supabase
@@ -140,6 +145,7 @@ export default function DashboardPage() {
           used_at: new Date().toISOString(),
           movie_title: movieTitle,
           viewing_date: viewingDate,
+          movie_poster_url: moviePosterUrl || null,
         })
         .eq("id", voucherId);
 
@@ -155,6 +161,7 @@ export default function DashboardPage() {
                 used_at: new Date().toISOString(),
                 movie_title: movieTitle,
                 viewing_date: viewingDate,
+                movie_poster_url: moviePosterUrl || null,
               }
             : v
         )
@@ -438,14 +445,28 @@ export default function DashboardPage() {
                     </td>
                     <td className="p-3.5">
                       {v.movie_title ? (
-                        <span className="font-semibold text-tesla-onyx">
-                          {v.movie_title}{" "}
-                          {v.viewing_date && (
-                            <span className="font-normal text-tesla-steel text-[11px]">
-                              ({formatItalianDate(v.viewing_date)})
-                            </span>
+                        <div className="flex items-center gap-2.5">
+                          {v.movie_poster_url ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={v.movie_poster_url}
+                              alt={v.movie_title}
+                              className="w-7 h-10 object-cover rounded border border-slate-200 shrink-0 shadow-xs"
+                            />
+                          ) : (
+                            <div className="w-7 h-10 rounded bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center text-slate-400">
+                              <Film className="w-3.5 h-3.5" />
+                            </div>
                           )}
-                        </span>
+                          <span className="font-semibold text-tesla-onyx">
+                            {v.movie_title}{" "}
+                            {v.viewing_date && (
+                              <span className="font-normal text-tesla-steel text-[11px]">
+                                ({formatItalianDate(v.viewing_date)})
+                              </span>
+                            )}
+                          </span>
+                        </div>
                       ) : (
                         <span className="text-tesla-gray">-</span>
                       )}

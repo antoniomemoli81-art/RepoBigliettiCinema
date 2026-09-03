@@ -66,7 +66,7 @@ export default function HistoryPage() {
             Storico Film & Biglietti Usati
           </h1>
           <p className="text-xs text-tesla-steel mt-0.5">
-            Archivio di tutte le visioni cinematografiche associate ai voucher The Space consumati
+            Archivio di tutte le visioni cinematografiche con locandine ufficiali e voucher The Space associati
           </p>
         </div>
 
@@ -79,14 +79,14 @@ export default function HistoryPage() {
 
       {loading ? (
         <div className="py-20 text-center text-xs text-tesla-steel">
-          Caricamento storico film da Supabase...
+          Caricamento catalogo film da Supabase...
         </div>
       ) : usedVouchers.length === 0 ? (
         <div className="card-tesla-container p-12 bg-white text-center">
           <Film className="w-10 h-10 text-tesla-gray mx-auto mb-3" />
           <h3 className="text-sm font-bold text-tesla-onyx">Nessun film ancora registrato</h3>
           <p className="text-xs text-tesla-steel mt-1 max-w-sm mx-auto">
-            Quando un voucher viene contrassegnato come usato con il titolo del film visto, viene archiviato in questo catalogo.
+            Quando un voucher viene contrassegnato come usato con il titolo del film visto, la locandina e i dettagli vengono archiviati in questo catalogo.
           </p>
           <Link
             href="/"
@@ -96,26 +96,47 @@ export default function HistoryPage() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {usedVouchers.map((voucher) => (
             <div
               key={voucher.id}
-              className="card-tesla-container p-5 flex flex-col justify-between bg-white"
+              className="card-tesla-container p-5 flex flex-col justify-between bg-white hover:shadow-md transition-shadow"
             >
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-tesla-off-white text-tesla-onyx border border-tesla-border flex items-center gap-1">
-                    <Calendar className="w-3 h-3 text-tesla-steel" />
-                    {voucher.viewing_date ? formatItalianDate(voucher.viewing_date) : "Data non indicata"}
-                  </span>
-                  <span className="text-xs text-tesla-steel font-medium">The Space Cinema</span>
+                {/* Movie Header with Poster Thumbnail */}
+                <div className="flex items-start gap-4 mb-4">
+                  {voucher.movie_poster_url ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={voucher.movie_poster_url}
+                      alt={voucher.movie_title || "Locandina"}
+                      className="w-20 h-28 object-cover rounded-md border border-slate-200 shadow-sm shrink-0 bg-slate-100"
+                    />
+                  ) : (
+                    <div className="w-20 h-28 rounded-md bg-slate-100 border border-slate-200 shrink-0 flex flex-col items-center justify-center text-slate-400 gap-1">
+                      <Film className="w-6 h-6" />
+                      <span className="text-[9px] uppercase font-bold">No Cover</span>
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-tesla-off-white text-tesla-onyx border border-tesla-border inline-flex items-center gap-1 mb-2">
+                      <Calendar className="w-3 h-3 text-tesla-steel" />
+                      {voucher.viewing_date ? formatItalianDate(voucher.viewing_date) : "Data non indicata"}
+                    </span>
+
+                    <h3 className="text-base font-bold text-tesla-onyx leading-snug line-clamp-2">
+                      {voucher.movie_title || "Visione al Cinema"}
+                    </h3>
+
+                    <span className="text-xs text-tesla-steel font-medium mt-1 block">
+                      The Space Cinema
+                    </span>
+                  </div>
                 </div>
 
-                <h3 className="text-base font-bold text-tesla-onyx leading-snug">
-                  {voucher.movie_title || "Visione al Cinema"}
-                </h3>
-
-                <div className="mt-4 p-3 bg-tesla-off-white border border-tesla-border rounded text-xs space-y-1">
+                {/* Voucher Meta details */}
+                <div className="p-3 bg-tesla-off-white border border-tesla-border rounded text-xs space-y-1">
                   <div className="flex justify-between text-tesla-steel">
                     <span>Voucher Riscatto:</span>
                     <span className="font-mono font-bold text-tesla-onyx">{voucher.code}</span>

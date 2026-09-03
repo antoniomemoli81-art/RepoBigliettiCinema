@@ -13,6 +13,7 @@ export interface Voucher {
   is_used: boolean;
   used_at?: string | null;
   movie_title?: string | null;
+  movie_poster_url?: string | null;
   viewing_date?: string | null;
   notes?: string | null;
   batch_id?: string | null;

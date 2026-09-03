@@ -235,8 +235,8 @@ export default function UseTicketModal({
                   <span className="text-xs font-semibold text-tesla-onyx block leading-tight">
                     Copertina film associata
                   </span>
-                  <span className="text-[10px] text-emerald-600 font-medium">
-                    &check; Verrà salvata su Supabase
+                  <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Verrà salvata su Supabase
                   </span>
                 </div>
               </div>

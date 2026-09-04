@@ -101,6 +101,16 @@ export default function Header() {
             >
               Storico Film
             </Link>
+            <Link
+              href="/settings"
+              className={`py-5 transition-colors ${
+                pathname === "/settings"
+                  ? "text-tesla-onyx border-b-2 border-tesla-onyx font-semibold"
+                  : "text-tesla-steel hover:text-tesla-onyx"
+              }`}
+            >
+              Impostazioni
+            </Link>
           </nav>
         </div>
 

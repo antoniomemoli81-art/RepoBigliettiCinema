@@ -65,6 +65,7 @@ export default function LoginPage() {
         });
         if (error) throw error;
         router.push("/");
+        router.refresh();
       }
     } catch (err: any) {
       // In local mode if Supabase keys are placeholder, allow demo login
